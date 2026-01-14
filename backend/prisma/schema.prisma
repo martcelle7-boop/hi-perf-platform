@@ -5,3 +5,123 @@ generator client {
 datasource db {
   provider = "postgresql"
 }
+
+// === MVP MODELS ===
+
+enum UserRole {
+  ADMIN
+  BO
+  USER
+}
+
+model User {
+  id        Int      @id @default(autoincrement())
+  email     String   @unique
+  password  String
+  role      UserRole @default(USER)
+
+  clientId  Int?
+  client    Client?  @relation(fields: [clientId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum NetworkType {
+  NORMAL
+  PARTNER
+}
+
+model Network {
+  id               Int      @id @default(autoincrement())
+  code             String   @unique
+  name             String
+  type             NetworkType @default(NORMAL)
+
+  parentNetworkId  Int?
+  parentNetwork    Network? @relation("NetworkParent", fields: [parentNetworkId], references: [id], onDelete: SetNull)
+  childNetworks    Network[] @relation("NetworkParent")
+
+  clientNetworks   ClientNetwork[]
+  productNetworks  ProductNetwork[]
+  productPrices    ProductPrice[]
+
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model Client {
+  id              Int      @id @default(autoincrement())
+  name            String
+
+  users           User[]
+  clientNetworks  ClientNetwork[]
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model ClientNetwork {
+  id        Int     @id @default(autoincrement())
+  clientId Int
+  networkId Int
+
+  client   Client  @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  network  Network @relation(fields: [networkId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([clientId, networkId])
+}
+
+model Product {
+  id              Int      @id @default(autoincrement())
+  code            String   @unique
+  name            String
+  description     String?
+
+  isActive        Boolean  @default(true)
+
+  productNetworks ProductNetwork[]
+  productPrices   ProductPrice[]
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model ProductNetwork {
+  id        Int     @id @default(autoincrement())
+  productId Int
+  networkId Int
+
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  network   Network @relation(fields: [networkId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([productId, networkId])
+}
+
+model ProductPrice {
+  id        Int      @id @default(autoincrement())
+  productId Int
+  networkId Int
+
+  currency  String   @default("EUR")
+  amount    Decimal
+  isActive  Boolean  @default(true)
+
+  note      String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  network   Network  @relation(fields: [networkId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, networkId])
+  @@index([networkId])
+  @@index([productId])
+}
