@@ -1,5 +1,6 @@
 generator client {
   provider = "prisma-client-js"
+  engineType = "binary"
 }
 
 datasource db {
@@ -22,6 +23,8 @@ model User {
 
   clientId  Int?
   client    Client?  @relation(fields: [clientId], references: [id], onDelete: SetNull)
+
+  quotations Quotation[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -56,6 +59,7 @@ model Client {
 
   users           User[]
   clientNetworks  ClientNetwork[]
+  quotations      Quotation[]
 
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
@@ -85,6 +89,7 @@ model Product {
 
   productNetworks ProductNetwork[]
   productPrices   ProductPrice[]
+  quotationItems  QuotationItem[]
 
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
@@ -123,5 +128,55 @@ model ProductPrice {
 
   @@unique([productId, networkId])
   @@index([networkId])
+  @@index([productId])
+}
+
+// === QUOTATION MODELS ===
+
+enum QuotationStatus {
+  DRAFT
+  SENT
+  ACCEPTED
+  REJECTED
+}
+
+model Quotation {
+  id              Int      @id @default(autoincrement())
+  clientId        Int
+  userId          Int
+  status          QuotationStatus @default(DRAFT)
+
+  totalAmount     Decimal  @default(0)
+  currency        String   @default("EUR")
+
+  items           QuotationItem[]
+
+  client          Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([userId, status])
+  @@index([clientId])
+  @@index([userId])
+}
+
+model QuotationItem {
+  id              Int      @id @default(autoincrement())
+  quotationId     Int
+  productId       Int
+
+  quantity        Int
+  unitPrice       Decimal?
+  currency        String   @default("EUR")
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  quotation       Quotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  product         Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([quotationId])
   @@index([productId])
 }
