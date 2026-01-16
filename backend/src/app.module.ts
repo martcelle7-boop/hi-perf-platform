@@ -10,9 +10,23 @@ import { QuotationsModule } from './quotations/quotations.module';
 import { CatalogModule } from './catalog/catalog.module';
 import { OrdersModule } from './orders/orders.module';
 import { PaymentModule } from './payment/payment.module';
+import { AdminModule } from './admin/admin.module';
+import { BoModule } from './bo/bo.module';
 
 @Module({
-  imports: [AuthModule, NetworksModule, ClientsModule, ProductsModule, PricingModule, QuotationsModule, CatalogModule, OrdersModule, PaymentModule],
+  imports: [
+    AuthModule,
+    NetworksModule,
+    ClientsModule,
+    ProductsModule,
+    PricingModule,
+    QuotationsModule,
+    CatalogModule,
+    OrdersModule,
+    PaymentModule,
+    AdminModule,
+    BoModule,
+  ],
   controllers: [AppController],
   providers: [AppService],
 })
