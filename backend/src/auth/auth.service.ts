@@ -24,6 +24,17 @@ export class AuthService {
     // Find user by email
     const user = await this.prisma.user.findUnique({
       where: { email },
+      include: {
+        client: {
+          include: {
+            clientNetworks: {
+              include: {
+                network: true,
+              },
+            },
+          },
+        },
+      },
     });
 
     if (!user) {
@@ -36,12 +47,16 @@ export class AuthService {
       throw new UnauthorizedException('Invalid email or password');
     }
 
+    // Determine primary network (first one from client networks, or default to 1)
+    const primaryNetworkId = user.client?.clientNetworks?.[0]?.networkId || 1;
+
     // Generate JWT
     const payload = {
       sub: user.id,
       email: user.email,
       role: user.role,
       clientId: user.clientId,
+      networkId: primaryNetworkId,
     };
 
     const accessToken = this.jwtService.sign(payload);

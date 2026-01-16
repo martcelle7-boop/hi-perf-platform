@@ -24,7 +24,11 @@ model User {
   clientId  Int?
   client    Client?  @relation(fields: [clientId], references: [id], onDelete: SetNull)
 
+  networkId Int?
+  network   Network? @relation(fields: [networkId], references: [id], onDelete: SetNull)
+
   quotations Quotation[]
+  orders     Order[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -45,9 +49,11 @@ model Network {
   parentNetwork    Network? @relation("NetworkParent", fields: [parentNetworkId], references: [id], onDelete: SetNull)
   childNetworks    Network[] @relation("NetworkParent")
 
+  users            User[]
   clientNetworks   ClientNetwork[]
   productNetworks  ProductNetwork[]
   productPrices    ProductPrice[]
+  quotations       Quotation[]
 
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
@@ -60,6 +66,7 @@ model Client {
   users           User[]
   clientNetworks  ClientNetwork[]
   quotations      Quotation[]
+  orders          Order[]
 
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
@@ -79,20 +86,42 @@ model ClientNetwork {
   @@unique([clientId, networkId])
 }
 
+enum ProductType {
+  GENERIC  // BO-added items (no price, manual)
+  NORMAL   // Regular product with network-based pricing
+  PARTNER  // Partner offering (priceDescription instead of numeric price)
+}
+
 model Product {
-  id              Int      @id @default(autoincrement())
-  code            String   @unique
+  id              Int         @id @default(autoincrement())
+  code            String      @unique
   name            String
   description     String?
-
-  isActive        Boolean  @default(true)
+  longDescription String?
+  
+  // CDC required fields
+  type            ProductType @default(NORMAL)
+  publicPrice     Decimal?    // Fallback price if no network price
+  isPublicPriceTTC Boolean    @default(false) // HT=false, TTC=true
+  priceDescription String?    // For PARTNER items: "À partir de 29€/mois"
+  
+  // Additional product metadata
+  brand           String?
+  unit            String?     // "pièce", "kg", "L", etc.
+  shippingFee     Decimal?    // Frais de port
+  activationService Boolean   @default(false)
+  externalUrl     String?     // For PARTNER products
+  partnerCode     String?     // Partner identifier
+  
+  isActive        Boolean     @default(true)
 
   productNetworks ProductNetwork[]
   productPrices   ProductPrice[]
   quotationItems  QuotationItem[]
+  orderLines      OrderLine[]
 
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
 }
 
 model ProductNetwork {
@@ -138,21 +167,25 @@ enum QuotationStatus {
   SENT
   ACCEPTED
   REJECTED
+  EXPIRED
 }
 
 model Quotation {
   id              Int      @id @default(autoincrement())
   clientId        Int
   userId          Int
+  networkId       Int
   status          QuotationStatus @default(DRAFT)
 
   totalAmount     Decimal  @default(0)
   currency        String   @default("EUR")
 
   items           QuotationItem[]
+  order           Order?   // Links to order after acceptance
 
   client          Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
   user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  network         Network  @relation(fields: [networkId], references: [id], onDelete: Cascade)
 
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
@@ -160,12 +193,120 @@ model Quotation {
   @@unique([userId, status])
   @@index([clientId])
   @@index([userId])
+  @@index([networkId])
+}
+// === ORDER MODELS ===
+
+enum OrderStatus {
+  PENDING_PAYMENT    // Awaiting payment
+  PAID               // Payment received
+  FULFILLED          // Shipped/delivered
+  CANCELLED          // Cancelled
 }
 
+model Order {
+  id            Int        @id @default(autoincrement())
+  code          String     @unique // Generated order number
+  clientId      Int
+  userId        Int
+  quotationId   Int?       @unique // Reference to original quotation
+  status        OrderStatus @default(PENDING_PAYMENT)
+  
+  totalAmount   Decimal    @default(0)
+  currency      String     @default("EUR")
+  
+  lines         OrderLine[]
+  payment       Payment?
+
+  client        Client     @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  user          User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  quotation     Quotation? @relation(fields: [quotationId], references: [id], onDelete: SetNull)
+
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  @@index([clientId])
+  @@index([userId])
+  @@index([quotationId])
+}
+
+model OrderLine {
+  id              Int    @id @default(autoincrement())
+  orderId         Int
+  productId       Int
+  productCode     String // Snapshot
+  productName     String // Snapshot
+  quantity        Int
+  unitPrice       Decimal
+  currency        String @default("EUR")
+  sourceNetworkId Int
+
+  order           Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product         Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([orderId])
+}
+
+// === PAYMENT ===
+
+enum PaymentStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+model Payment {
+  id                    Int           @id @default(autoincrement())
+  orderId               Int           @unique
+  
+  provider              String        // "stripe", "paypal", etc.
+  providerSessionId     String?       // Stripe Checkout Session ID
+  providerPaymentIntentId String?     // Stripe PaymentIntent ID
+  
+  amount                Decimal
+  currency              String        @default("EUR")
+  status                PaymentStatus @default(PENDING)
+  
+  metadata              Json?         // Extra data from provider
+  
+  order                 Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+
+  @@index([orderId])
+  @@index([provider])
+}
+
+// === PARAMETERS / CONFIG ===
+
+model Parameters {
+  id                    Int     @id @default(autoincrement())
+  allowMultiNetworkCart Boolean @default(false) // Can user add items from different networks?
+  
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+}
+
+// === EXTENSIONS FOR FUTURE ===
+// Affaire (business case)
+// Demande (support ticket)
+// Segment (user segmentation)
+// StockMovement (inventory)
+// etc.
 model QuotationItem {
   id              Int      @id @default(autoincrement())
   quotationId     Int
   productId       Int
+
+  // Snapshot product identifiers to ensure quotations are immutable to later product changes
+  productCode     String
+  productName     String
 
   quantity        Int
   unitPrice       Decimal?

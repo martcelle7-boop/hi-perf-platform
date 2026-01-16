@@ -10,6 +10,7 @@ import { Prisma } from '@prisma/client';
 import {
   CreateQuotationItemDto,
   UpdateQuotationStatusDto,
+  UpdateQuotationItemDto,
 } from './dto';
 
 @Injectable()
@@ -22,7 +23,7 @@ export class QuotationsService {
   /**
    * Get or create the current DRAFT quotation for a user
    */
-  async getCurrentQuotation(userId: number) {
+  async getCurrentQuotation(userId: number, networkId?: number) {
     // Get user to verify they exist and get clientId
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
@@ -37,13 +38,12 @@ export class QuotationsService {
       throw new BadRequestException('User does not belong to any client');
     }
 
-    // Find existing DRAFT quotation
-    let quotation = await this.prisma.quotation.findUnique({
+    // Find existing DRAFT quotation (for given networkId if provided)
+    let quotation = await this.prisma.quotation.findFirst({
       where: {
-        userId_status: {
-          userId,
-          status: 'DRAFT',
-        },
+        userId,
+        status: 'DRAFT',
+        ...(networkId && { networkId }),
       },
       include: {
         items: {
@@ -62,10 +62,12 @@ export class QuotationsService {
 
     // If no DRAFT quotation exists, create one
     if (!quotation) {
+      const resolvedNetworkId = networkId || 1; // Default to network 1
       quotation = await this.prisma.quotation.create({
         data: {
           userId,
           clientId: user.clientId,
+          networkId: resolvedNetworkId,
           status: 'DRAFT',
         },
         include: {
@@ -97,7 +99,80 @@ export class QuotationsService {
   }
 
   /**
+   * Get all quotations for a user (READ-ONLY)
+   */
+  async getUserQuotations(userId: number) {
+    const quotations = await this.prisma.quotation.findMany({
+      where: { userId },
+      include: {
+        items: {
+          include: {
+            product: {
+              select: {
+                id: true,
+                code: true,
+                name: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return quotations.map(q => ({
+      ...q,
+      totalAmount: q.items.reduce((sum, item) => {
+        if (item.unitPrice === null) return sum;
+        return sum + item.unitPrice.toNumber() * item.quantity;
+      }, 0),
+    }));
+  }
+
+  /**
+   * Get a quotation by ID (verify ownership or ADMIN/BO role)
+   */
+  async getQuotationById(quotationId: number, userId: number, userRole?: string) {
+    const quotation = await this.prisma.quotation.findUnique({
+      where: { id: quotationId },
+      include: {
+        items: {
+          include: {
+            product: {
+              select: {
+                id: true,
+                code: true,
+                name: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!quotation) {
+      throw new NotFoundException(`Quotation ${quotationId} not found`);
+    }
+
+    // Only owner, ADMIN, or BO can view
+    if (quotation.userId !== userId && !['ADMIN', 'BO'].includes(userRole || '')) {
+      throw new ForbiddenException('You cannot view this quotation');
+    }
+
+    const total = quotation.items.reduce((sum, item) => {
+      if (item.unitPrice === null) return sum;
+      return sum + item.unitPrice.toNumber() * item.quantity;
+    }, 0);
+
+    return {
+      ...quotation,
+      totalAmount: new Prisma.Decimal(total),
+    };
+  }
+
+  /**
    * Add an item to the current DRAFT quotation
+   * Snapshot product name and code for immutability
    * If product has no effective price, unitPrice = null
    */
   async addItemToQuotation(
@@ -106,7 +181,7 @@ export class QuotationsService {
     networkId: number,
   ) {
     // Get current quotation
-    const quotation = await this.getCurrentQuotation(userId);
+    const quotation = await this.getCurrentQuotation(userId, networkId);
 
     // Verify product exists
     const product = await this.prisma.product.findUnique({
@@ -134,11 +209,13 @@ export class QuotationsService {
       );
     }
 
-    // Create quotation item
+    // Create quotation item with snapshot of product identifiers
     const item = await this.prisma.quotationItem.create({
       data: {
         quotationId: quotation.id,
         productId: dto.productId,
+        productCode: product.code,
+        productName: product.name,
         quantity: dto.quantity || 1,
         unitPrice,
         currency: 'EUR',
@@ -158,6 +235,61 @@ export class QuotationsService {
     await this.recomputeQuotationTotal(quotation.id);
 
     return item;
+  }
+
+  /**
+   * Update quantity of an item in DRAFT quotation
+   */
+  async updateItemQuantity(
+    userId: number,
+    itemId: number,
+    dto: UpdateQuotationItemDto,
+  ) {
+    // Get the item
+    const item = await this.prisma.quotationItem.findUnique({
+      where: { id: itemId },
+    });
+
+    if (!item) {
+      throw new NotFoundException(`Item ${itemId} not found`);
+    }
+
+    // Verify quotation ownership and is DRAFT
+    const quotation = await this.prisma.quotation.findUnique({
+      where: { id: item.quotationId },
+    });
+
+    if (!quotation) {
+      throw new NotFoundException(`Quotation not found`);
+    }
+
+    if (quotation.userId !== userId) {
+      throw new ForbiddenException('Item does not belong to your quotation');
+    }
+
+    if (quotation.status !== 'DRAFT') {
+      throw new BadRequestException('Cannot modify a non-DRAFT quotation');
+    }
+
+    // Update item
+    const updated = await this.prisma.quotationItem.update({
+      where: { id: itemId },
+      data: { quantity: dto.quantity },
+      include: {
+        product: {
+          select: {
+            id: true,
+            code: true,
+            name: true,
+          },
+        },
+      },
+    });
+
+    // Recompute quotation total
+    await this.recomputeQuotationTotal(quotation.id);
+
+    return updated;
   }
 
   /**

@@ -11,7 +11,14 @@ export class CreateQuotationItemDto {
   quantity?: number;
 }
 
-export class UpdateQuotationStatusDto {
-  @IsEnum(['SENT', 'ACCEPTED', 'REJECTED'])
-  status: 'SENT' | 'ACCEPTED' | 'REJECTED';
+export class UpdateQuotationItemDto {
+  @IsInt()
+  @IsPositive()
+  quantity: number;
 }
+
+export class UpdateQuotationStatusDto {
+  @IsEnum(['SENT', 'ACCEPTED', 'REJECTED', 'EXPIRED'])
+  status: 'SENT' | 'ACCEPTED' | 'REJECTED' | 'EXPIRED';
+}
+
