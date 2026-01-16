@@ -1,41 +1,30 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { useCart } from '@/hooks/useCart';
+import { createQuotationFromCart } from '@/lib/api/quotations';
 import { Button } from '@/components/ui/button';
-import { useAuth } from '@/hooks/useAuth';
-import { useQuotation } from '@/src/hooks/useQuotation';
-import { useState } from 'react';
 
 export default function CartPage() {
   const router = useRouter();
-  const { isAuthenticated, isLoading } = useAuth();
-  const { quotation, isLoading: quotationLoading, removeItem } = useQuotation();
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const { cart, isLoading, updateLine, removeLine, clearCart } = useCart();
+  const [isCreatingQuotation, setIsCreatingQuotation] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  if (isLoading || quotationLoading) {
+  if (isLoading) {
     return (
-      <div className="flex justify-center items-center h-96">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900"></div>
+      <div className="container mx-auto p-4">
+        <p className="text-center">Loading cart...</p>
       </div>
     );
   }
 
-  if (!isAuthenticated) {
+  if (!cart || !cart.lines || cart.lines.length === 0) {
     return (
-      <div className="text-center py-12">
-        <h1 className="text-2xl font-bold text-gray-900 mb-4">Please login to view cart</h1>
-        <Link href="/login">
-          <Button>Go to Login</Button>
-        </Link>
-      </div>
-    );
-  }
-
-  if (!quotation || quotation.items.length === 0) {
-    return (
-      <div className="text-center py-12">
-        <h1 className="text-2xl font-bold text-gray-900 mb-4">Your cart is empty</h1>
+      <div className="container mx-auto p-4 text-center">
+        <h1 className="text-3xl font-bold text-gray-900 mb-4">Your cart is empty</h1>
         <Link href="/shop/products">
           <Button>Continue Shopping</Button>
         </Link>
@@ -43,130 +32,140 @@ export default function CartPage() {
     );
   }
 
-  const handleRemoveItem = async (itemId: number) => {
-    await removeItem(itemId);
+  const handleUpdateQuantity = async (lineId: number, newQuantity: number) => {
+    if (newQuantity <= 0) {
+      await removeLine(lineId);
+    } else {
+      await updateLine(lineId, newQuantity);
+    }
   };
 
-  const handleSubmit = async () => {
-    setIsSubmitting(true);
+  const handleRemoveLine = async (lineId: number) => {
+    await removeLine(lineId);
+  };
+
+  const handleCreateQuotation = async () => {
+    setIsCreatingQuotation(true);
+    setError(null);
     try {
-      router.push('/shop/checkout');
-    } catch (err) {
-      console.error('Failed to proceed:', err);
+      const response = await createQuotationFromCart();
+      // Redirect to quotation detail page
+      router.push(`/shop/checkout/${response.id}`);
+    } catch (err: any) {
+      console.error('Failed to create quotation:', err);
+      setError(err.message || 'Failed to create quotation');
     } finally {
-      setIsSubmitting(false);
+      setIsCreatingQuotation(false);
+    }
+  };
+
+  const handleClearCart = async () => {
+    if (confirm('Are you sure you want to clear your cart?')) {
+      await clearCart();
     }
   };
 
   return (
-    <div className="max-w-4xl mx-auto py-8">
-      <h1 className="text-3xl font-bold text-gray-900 mb-8">Mon Devis</h1>
+    <div className="container mx-auto p-4">
+      <h1 className="text-3xl font-bold text-gray-900 mb-6">Shopping Cart</h1>
 
-      <div className="bg-white rounded-lg shadow-md overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-gray-50 border-b border-gray-200">
-              <tr>
-                <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">
-                  Produit
-                </th>
-                <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">
-                  Quantité
-                </th>
-                <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">
-                  Prix Unitaire
-                </th>
-                <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">
-                  Sous-Total
-                </th>
-                <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">
-                  Action
-                </th>
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded p-4 mb-6">
+          <p className="text-red-800">{error}</p>
+        </div>
+      )}
+
+      <div className="bg-white rounded-lg shadow overflow-x-auto">
+        <table className="w-full">
+          <thead className="bg-gray-50 border-b">
+            <tr>
+              <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">Product</th>
+              <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">Quantity</th>
+              <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">Price</th>
+              <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">Subtotal</th>
+              <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {cart.lines.map((line) => (
+              <tr key={line.id} className="border-b hover:bg-gray-50">
+                <td className="px-6 py-4">
+                  <div>
+                    <p className="font-medium text-gray-900">{line.product?.name || 'Product'}</p>
+                    <p className="text-sm text-gray-600">{line.product?.code}</p>
+                  </div>
+                </td>
+                <td className="px-6 py-4">
+                  <input
+                    type="number"
+                    min="1"
+                    value={line.quantity}
+                    onChange={(e) => handleUpdateQuantity(line.id, parseInt(e.target.value) || 1)}
+                    className="w-16 px-2 py-1 border border-gray-300 rounded"
+                  />
+                </td>
+                <td className="px-6 py-4">
+                  {line.unitPrice ? (
+                    <p className="text-gray-900">
+                      {line.currency} {parseFloat(line.unitPrice).toFixed(2)}
+                    </p>
+                  ) : (
+                    <p className="text-gray-600">On request</p>
+                  )}
+                </td>
+                <td className="px-6 py-4">
+                  {line.unitPrice ? (
+                    <p className="font-medium text-gray-900">
+                      {line.currency}{' '}
+                      {(parseFloat(line.unitPrice) * line.quantity).toFixed(2)}
+                    </p>
+                  ) : (
+                    <p className="text-gray-600">On request</p>
+                  )}
+                </td>
+                <td className="px-6 py-4">
+                  <button
+                    onClick={() => handleRemoveLine(line.id)}
+                    className="text-red-600 hover:text-red-800 text-sm font-medium"
+                  >
+                    Remove
+                  </button>
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              {quotation.items.map((item) => {
-                const unitPrice = item.unitPrice
-                  ? parseFloat(item.unitPrice)
-                  : null;
-                const subtotal =
-                  unitPrice !== null
-                    ? (unitPrice * item.quantity).toFixed(2)
-                    : null;
+            ))}
+          </tbody>
+        </table>
+      </div>
 
-                return (
-                  <tr key={item.id} className="border-b border-gray-200 hover:bg-gray-50">
-                    <td className="px-6 py-4">
-                      <div>
-                        <p className="text-sm font-medium text-gray-900">
-                          {item.product.name}
-                        </p>
-                        <p className="text-xs text-gray-500">{item.product.code}</p>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-900">
-                      {item.quantity}
-                    </td>
-                    <td className="px-6 py-4 text-sm">
-                      {unitPrice !== null ? (
-                        <p className="text-gray-900">
-                          {item.currency} {unitPrice.toFixed(2)}
-                        </p>
-                      ) : (
-                        <p className="text-gray-500 italic">Sur devis</p>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 text-sm">
-                      {subtotal !== null ? (
-                        <p className="font-medium text-gray-900">
-                          {item.currency} {subtotal}
-                        </p>
-                      ) : (
-                        <p className="text-gray-500 italic">Sur devis</p>
-                      )}
-                    </td>
-                    <td className="px-6 py-4">
-                      <button
-                        onClick={() => handleRemoveItem(item.id)}
-                        className="text-red-600 hover:text-red-800 text-sm font-medium"
-                      >
-                        Supprimer
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+      {/* Summary */}
+      <div className="mt-6 bg-gray-50 rounded-lg p-6">
+        <div className="flex justify-between items-center">
+          <p className="text-lg font-semibold text-gray-900">Total:</p>
+          <p className="text-2xl font-bold text-blue-600">
+            {cart.currency} {parseFloat(cart.totalAmount || '0').toFixed(2)}
+          </p>
         </div>
-
-        {/* Total */}
-        <div className="bg-gray-50 px-6 py-4 border-t border-gray-200">
-          <div className="flex justify-end items-center gap-4">
-            <p className="text-lg font-semibold text-gray-900">Total estimé:</p>
-            <p className="text-2xl font-bold text-blue-600">
-              {quotation.currency} {parseFloat(quotation.totalAmount).toFixed(2)}
-            </p>
-          </div>
-          {quotation.items.some((item) => item.unitPrice === null) && (
-            <p className="text-sm text-gray-500 italic mt-2">
-              * Prix final à confirmer après validation des articles "Sur devis"
-            </p>
-          )}
-        </div>
+        <p className="text-sm text-gray-600 mt-2">
+          {cart.lines.length} item(s) in cart
+        </p>
       </div>
 
       {/* Actions */}
-      <div className="mt-8 flex gap-4 justify-between">
-        <Link href="/shop/products">
-          <Button variant="outline">Continuer les achats</Button>
-        </Link>
+      <div className="mt-6 flex gap-4 justify-between">
+        <div className="flex gap-4">
+          <Link href="/shop/products">
+            <Button variant="outline">Continue Shopping</Button>
+          </Link>
+          <Button variant="outline" onClick={handleClearCart} className="text-red-600">
+            Clear Cart
+          </Button>
+        </div>
         <Button
-          onClick={handleSubmit}
-          disabled={isSubmitting}
+          onClick={handleCreateQuotation}
+          disabled={isCreatingQuotation}
           className="bg-blue-600 hover:bg-blue-700"
         >
-          {isSubmitting ? 'Chargement...' : 'Demander un devis'}
+          {isCreatingQuotation ? 'Creating quotation...' : 'Request Quotation'}
         </Button>
       </div>
     </div>

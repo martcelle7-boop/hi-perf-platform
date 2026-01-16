@@ -1,166 +1,66 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
-
-export interface QuotationItem {
-  id: number;
-  quotationId: number;
-  productId: number;
-  quantity: number;
-  unitPrice: string | null;
-  currency: string;
-  product: {
-    id: number;
-    code: string;
-    name: string;
-  };
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface Quotation {
-  id: number;
-  clientId: number;
-  userId: number;
-  status: 'DRAFT' | 'SENT' | 'ACCEPTED' | 'REJECTED';
-  totalAmount: string;
-  currency: string;
-  items: QuotationItem[];
-  createdAt: string;
-  updatedAt: string;
-}
-
-export class QuotationsApiError extends Error {
-  constructor(
-    public status: number,
-    message: string
-  ) {
-    super(message);
-    this.name = 'QuotationsApiError';
-  }
-}
-
 /**
- * Get current draft quotation for the authenticated user
+ * Quotations API client
  */
-export async function getCurrentQuotation(token: string): Promise<Quotation> {
-  const url = `${API_URL}/quotations/current`;
 
-  const response = await fetch(url, {
-    method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-  });
+import { apiGet, apiPost, apiDelete, apiPatch } from './http';
+import {
+  Quotation,
+  QuotationItem,
+  CreateQuotationFromCartResponse,
+  AcceptQuotationResponse,
+} from '@/lib/types/quotation';
 
-  if (!response.ok) {
-    if (response.status === 401) {
-      throw new QuotationsApiError(401, 'Unauthorized');
-    }
-    throw new QuotationsApiError(response.status, 'Failed to fetch quotation');
-  }
-
-  return response.json();
+export async function getCurrentQuotation(): Promise<Quotation> {
+  return apiGet<Quotation>('/quotations/current');
 }
 
-/**
- * Add item to current quotation
- */
 export async function addItemToQuotation(
   productId: number,
   quantity: number,
-  token: string
 ): Promise<QuotationItem> {
-  const url = `${API_URL}/quotations/current/items`;
-
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      productId,
-      quantity,
-    }),
-  });
-
-  if (!response.ok) {
-    if (response.status === 401) {
-      throw new QuotationsApiError(401, 'Unauthorized');
-    }
-    if (response.status === 400) {
-      throw new QuotationsApiError(400, 'Invalid request');
-    }
-    if (response.status === 404) {
-      throw new QuotationsApiError(404, 'Product not found');
-    }
-    throw new QuotationsApiError(response.status, 'Failed to add item');
-  }
-
-  return response.json();
+  return apiPost<QuotationItem>('/quotations/current/items', { productId, quantity });
 }
 
-/**
- * Remove item from current quotation
- */
+export async function updateQuotationItem(
+  itemId: string | number,
+  quantity: number,
+): Promise<QuotationItem> {
+  return apiPatch<QuotationItem>(`/quotations/items/${itemId}`, { quantity });
+}
+
 export async function removeItemFromQuotation(
-  itemId: number,
-  token: string
+  itemId: string | number,
 ): Promise<{ success: boolean }> {
-  const url = `${API_URL}/quotations/current/items/${itemId}`;
-
-  const response = await fetch(url, {
-    method: 'DELETE',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    if (response.status === 401) {
-      throw new QuotationsApiError(401, 'Unauthorized');
-    }
-    if (response.status === 403) {
-      throw new QuotationsApiError(403, 'Forbidden');
-    }
-    if (response.status === 404) {
-      throw new QuotationsApiError(404, 'Item not found');
-    }
-    throw new QuotationsApiError(response.status, 'Failed to remove item');
-  }
-
-  return response.json();
+  return apiDelete<{ success: boolean }>(`/quotations/items/${itemId}`);
 }
 
-/**
- * Submit quotation (change status to SENT)
- */
 export async function submitQuotation(
-  token: string
+  status: 'SENT' | 'ACCEPTED' | 'REJECTED' | 'EXPIRED' = 'SENT',
 ): Promise<Quotation> {
-  const url = `${API_URL}/quotations/current/submit`;
+  return apiPost<Quotation>('/quotations/current/submit', { status });
+}
 
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      status: 'SENT',
-    }),
+export async function createQuotationFromCart(): Promise<CreateQuotationFromCartResponse> {
+  return apiPost<CreateQuotationFromCartResponse>('/quotations/from-cart', {});
+}
+
+export async function getQuotationById(quotationId: string | number): Promise<Quotation> {
+  return apiGet<Quotation>(`/quotations/${quotationId}`);
+}
+
+export async function listQuotations(): Promise<Quotation[]> {
+  const response = await apiGet<{ quotations: Quotation[] }>('/quotations');
+  return response.quotations || [];
+}
+
+export async function acceptQuotation(quotationId: string | number): Promise<AcceptQuotationResponse> {
+  return apiPost<AcceptQuotationResponse>(`/quotations/${quotationId}/accept`, {
+    comment: 'Order approved',
   });
+}
 
-  if (!response.ok) {
-    if (response.status === 401) {
-      throw new QuotationsApiError(401, 'Unauthorized');
-    }
-    if (response.status === 400) {
-      throw new QuotationsApiError(400, 'Invalid request');
-    }
-    throw new QuotationsApiError(response.status, 'Failed to submit quotation');
-  }
-
-  return response.json();
+export async function rejectQuotation(quotationId: string | number, reason?: string): Promise<Quotation> {
+  return apiPost<Quotation>(`/quotations/${quotationId}/reject`, {
+    reason: reason || 'Rejected by user',
+  });
 }

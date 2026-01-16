@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/hooks/useAuth';
-import { useQuotation } from '@/src/hooks/useQuotation';
+import { useQuotation } from '@/hooks/useQuotation';
 
 export default function CheckoutPage() {
   const router = useRouter();
@@ -73,7 +73,9 @@ export default function CheckoutPage() {
               <div className="space-y-3">
                 {quotation.items.map((item) => {
                   const unitPrice = item.unitPrice
-                    ? parseFloat(item.unitPrice)
+                    ? typeof item.unitPrice === 'string'
+                      ? parseFloat(item.unitPrice)
+                      : item.unitPrice
                     : null;
                   const subtotal =
                     unitPrice !== null
@@ -87,9 +89,9 @@ export default function CheckoutPage() {
                     >
                       <div>
                         <p className="text-sm font-medium text-gray-900">
-                          {item.product.name} x {item.quantity}
+                          {item.product?.name || item.productName} x {item.quantity}
                         </p>
-                        <p className="text-xs text-gray-500">{item.product.code}</p>
+                        <p className="text-xs text-gray-500">{item.product?.code || item.productCode}</p>
                       </div>
                       <div className="text-right">
                         {unitPrice !== null ? (
@@ -138,13 +140,13 @@ export default function CheckoutPage() {
               {quotation.items.map((item) => (
                 <div key={item.id} className="flex justify-between text-sm">
                   <div className="text-gray-600">
-                    <p>{item.product.name}</p>
+                    <p>{item.product?.name || item.productName}</p>
                     <p className="text-xs text-gray-500">Qty: {item.quantity}</p>
                   </div>
                   <p className="font-medium">
                     {item.unitPrice
                       ? `${item.currency} ${(
-                          parseFloat(item.unitPrice) * item.quantity
+                          (typeof item.unitPrice === 'string' ? parseFloat(item.unitPrice) : item.unitPrice) * item.quantity
                         ).toFixed(2)}`
                       : 'Sur devis'}
                   </p>
@@ -155,7 +157,9 @@ export default function CheckoutPage() {
             <div className="flex justify-between text-lg font-bold">
               <span>Total estimé:</span>
               <span className="text-blue-600">
-                {quotation.currency} {parseFloat(quotation.totalAmount).toFixed(2)}
+                {quotation.currency} {String(quotation.totalAmount).includes('.')
+                  ? quotation.totalAmount
+                  : parseFloat(String(quotation.totalAmount)).toFixed(2)}
               </span>
             </div>
 

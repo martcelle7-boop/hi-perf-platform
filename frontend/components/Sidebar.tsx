@@ -2,12 +2,12 @@
 
 import Link from 'next/link';
 import { useAuth } from '@/hooks/useAuth';
-import { useCart } from '@/src/hooks/useCart';
+import { useCart } from '@/hooks/useCart';
 import { Button } from '@/components/ui/button';
 
 export function Sidebar() {
   const { user, logout } = useAuth();
-  const { getCartItemCount } = useCart();
+  const { itemCount } = useCart();
 
   if (!user) return null;
 
@@ -31,7 +31,7 @@ export function Sidebar() {
           { label: 'Shop', href: '/shop' },
           { label: 'My Products', href: '/shop/products' },
           { label: 'Orders', href: '/shop/orders' },
-          { label: 'Cart', href: '/shop/cart', badge: getCartItemCount() },
+          { label: 'Cart', href: '/shop/cart', badge: itemCount },
         ]
       : []),
   ];

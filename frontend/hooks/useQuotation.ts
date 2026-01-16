@@ -7,9 +7,8 @@ import {
   addItemToQuotation as apiAddItem,
   removeItemFromQuotation,
   submitQuotation as apiSubmitQuotation,
-  Quotation,
-  QuotationItem,
 } from '@/lib/api/quotations';
+import { Quotation } from '@/lib/types/quotation';
 
 interface UseQuotationReturn {
   quotation: Quotation | null;
@@ -25,14 +24,14 @@ interface UseQuotationReturn {
  * Hook to manage the quotation (cart) system
  */
 export function useQuotation(): UseQuotationReturn {
-  const { token } = useAuth();
+  const { isAuthenticated } = useAuth();
   const [quotation, setQuotation] = useState<Quotation | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Fetch quotation on mount and when token changes
   const refetch = useCallback(async () => {
-    if (!token) {
+    if (!isAuthenticated) {
       setQuotation(null);
       return;
     }
@@ -40,7 +39,7 @@ export function useQuotation(): UseQuotationReturn {
     setIsLoading(true);
     setError(null);
     try {
-      const data = await getCurrentQuotation(token);
+      const data = await getCurrentQuotation();
       setQuotation(data);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to fetch quotation';
@@ -49,59 +48,59 @@ export function useQuotation(): UseQuotationReturn {
     } finally {
       setIsLoading(false);
     }
-  }, [token]);
+  }, [isAuthenticated]);
 
   useEffect(() => {
     refetch();
   }, [refetch]);
 
   const addItem = useCallback(async (productId: number, quantity: number) => {
-    if (!token) {
+    if (!isAuthenticated) {
       setError('Not authenticated');
       return;
     }
 
     setError(null);
     try {
-      await apiAddItem(productId, quantity, token);
+      await apiAddItem(productId, quantity);
       await refetch();
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to add item';
       setError(errorMessage);
     }
-  }, [token, refetch]);
+  }, [isAuthenticated, refetch]);
 
   const removeItem = useCallback(async (itemId: number) => {
-    if (!token) {
+    if (!isAuthenticated) {
       setError('Not authenticated');
       return;
     }
 
     setError(null);
     try {
-      await removeItemFromQuotation(itemId, token);
+      await removeItemFromQuotation(itemId);
       await refetch();
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to remove item';
       setError(errorMessage);
     }
-  }, [token, refetch]);
+  }, [isAuthenticated, refetch]);
 
   const submitQuotation = useCallback(async () => {
-    if (!token) {
+    if (!isAuthenticated) {
       setError('Not authenticated');
       return;
     }
 
     setError(null);
     try {
-      await apiSubmitQuotation(token);
+      await apiSubmitQuotation();
       await refetch();
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to submit quotation';
       setError(errorMessage);
     }
-  }, [token, refetch]);
+  }, [isAuthenticated, refetch]);
 
   return {
     quotation,
