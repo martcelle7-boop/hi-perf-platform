@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { PrismaModule } from '../prisma/prisma.module';
+import { AuthModule } from '../auth/auth.module';
 import { AdminClientsService } from './admin-clients.service';
 import { AdminClientsController } from './admin-clients.controller';
 import { AdminClientNetworksService } from './admin-client-networks.service';
@@ -12,7 +13,7 @@ import { AdminConfigService } from './admin-config.service';
 import { AdminConfigController } from './admin-config.controller';
 
 @Module({
-  imports: [PrismaModule],
+  imports: [PrismaModule, AuthModule],
   providers: [
     AdminClientsService,
     AdminClientNetworksService,

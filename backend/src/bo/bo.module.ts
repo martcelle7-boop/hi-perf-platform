@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { PrismaModule } from '../prisma/prisma.module';
 import { AdminModule } from '../admin/admin.module';
+import { AuthModule } from '../auth/auth.module';
 import { BoProductsService } from './bo-products.service';
 import { BoProductsController } from './bo-products.controller';
 import { BoProductNetworksService } from './bo-product-networks.service';
@@ -10,7 +11,7 @@ import { BoProductPricesController } from './bo-product-prices.controller';
 import { BoProductPricesStandaloneController } from './bo-product-prices-standalone.controller';
 
 @Module({
-  imports: [PrismaModule, AdminModule],
+  imports: [PrismaModule, AdminModule, AuthModule],
   providers: [
     BoProductsService,
     BoProductNetworksService,
