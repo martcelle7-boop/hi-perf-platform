@@ -21,54 +21,50 @@ export class AuthService {
   ) {}
 
   async login(email: string, password: string): Promise<AuthResponse> {
-    // Find user by email
-    const user = await this.prisma.user.findUnique({
-      where: { email },
-      include: {
-        client: {
-          include: {
-            clientNetworks: {
-              include: {
-                network: true,
-              },
-            },
-          },
-        },
-      },
-    });
+    try {
+      // Find user by email
+      const user = await this.prisma.user.findUnique({
+        where: { email },
+      });
 
-    if (!user) {
-      throw new UnauthorizedException('Invalid email or password');
-    }
+      if (!user) {
+        throw new UnauthorizedException('Invalid email or password');
+      }
 
-    // Compare password
-    const isPasswordValid = await bcrypt.compare(password, user.password);
-    if (!isPasswordValid) {
-      throw new UnauthorizedException('Invalid email or password');
-    }
+      // Compare password
+      const isPasswordValid = await bcrypt.compare(password, user.password);
+      if (!isPasswordValid) {
+        throw new UnauthorizedException('Invalid email or password');
+      }
 
-    // Determine primary network (first one from client networks, or default to 1)
-    const primaryNetworkId = user.client?.clientNetworks?.[0]?.networkId || 1;
+      // Default network ID (no relation needed for login)
+      const primaryNetworkId = user.networkId || 1;
 
-    // Generate JWT
-    const payload = {
-      sub: user.id,
-      email: user.email,
-      role: user.role,
-      clientId: user.clientId,
-      networkId: primaryNetworkId,
-    };
-
-    const accessToken = this.jwtService.sign(payload);
-
-    return {
-      accessToken,
-      user: {
-        id: user.id,
+      // Generate JWT
+      const payload = {
+        sub: user.id,
         email: user.email,
         role: user.role,
         clientId: user.clientId,
-      },
-    };
+        networkId: primaryNetworkId,
+      };
+
+      const accessToken = this.jwtService.sign(payload);
+
+      return {
+        accessToken,
+        user: {
+          id: user.id,
+          email: user.email,
+          role: user.role,
+          clientId: user.clientId,
+        },
+      };
+    } catch (error) {
+      if (error instanceof UnauthorizedException) {
+        throw error;
+      }
+      throw new UnauthorizedException('Invalid email or password');
+    }
   }
 }
